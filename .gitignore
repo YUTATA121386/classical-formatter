@@ -1,0 +1,12 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+*.spec
+work/
+dist/
+build/
+*.bak
+norm_test.txt
+fix_*.py
+gen_fix.py
+!outputs/
