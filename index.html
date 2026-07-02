@@ -1,0 +1,147 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apple Music 古典乐曲目标题格式化</title>
+<style>
+:root { --bg: #f5f5f7; --fg: #1d1d1f; --card: #fff; --border: #d2d2d7; --accent: #0071e3; --accent-hover: #0077ed; --muted: #86868b; --input-bg: #fff; --shadow: 0 2px 12px rgba(0,0,0,0.08); }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f5f5f7; --card: #2c2c2e; --border: #48484a; --accent: #0a84ff; --accent-hover: #409cff; --muted: #98989d; --input-bg: #3a3a3c; --shadow: 0 2px 12px rgba(0,0,0,0.3); } }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background: var(--bg); color: var(--fg); padding: 20px; min-height: 100vh; display: flex; justify-content: center; }
+.container { max-width: 860px; width: 100%; }
+h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+.controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.radio-group { display: flex; gap: 6px; background: var(--card); border-radius: 8px; padding: 3px; border: 1px solid var(--border); }
+.radio-group input[type=radio] { display: none; }
+.radio-group label { padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: .15s; color: var(--muted); }
+.radio-group input:checked+label { background: var(--accent); color: #fff; }
+.btn { padding: 7px 18px; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: .15s; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary { background: var(--card); color: var(--fg); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--border); }
+.btn-danger { background: #ff453a; color: #fff; }
+.btn-danger:hover { background: #ff6259; }
+textarea { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: "SF Mono",Menlo,monospace; font-size: 13px; line-height: 1.6; background: var(--input-bg); color: var(--fg); resize: vertical; outline: none; transition: border-color .15s; }
+textarea:focus { border-color: var(--accent); }
+.label-row { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 6px; }
+.label-row span { font-size: 13px; font-weight: 500; }
+.label-row .count { color: var(--muted); font-weight: 400; font-size: 12px; }
+.action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+#status { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🎵 古典乐曲目标题格式化</h1>
+<p class="sub">遵循 Apple Music 古典乐命名规范 · 一行一首</p>
+<div class="controls">
+  <div class="radio-group" id="modeGroup">
+    <input type="radio" name="mode" id="mZh" value="zh"><label for="mZh">中文</label>
+    <input type="radio" name="mode" id="mEn" value="en"><label for="mEn">英文</label>
+    <input type="radio" name="mode" id="mPaired" value="paired" checked><label for="mPaired">配对(中+英)</label>
+  </div>
+</div>
+<div class="label-row">
+  <span>输入</span>
+  <span class="count" id="inCount">行数: 0</span>
+</div>
+<textarea id="inputText" rows="10" placeholder="在此粘贴曲目名称，一行一首…"></textarea>
+<div class="action-row">
+  <button class="btn btn-primary" onclick="process()">▶ 开始格式化</button>
+  <button class="btn btn-secondary" onclick="copyOut()">📋 复制输出</button>
+  <button class="btn btn-danger" onclick="clearAll()">清空</button>
+</div>
+<div class="label-row">
+  <span>输出</span>
+  <span class="count" id="outCount">行数: 0</span>
+</div>
+<textarea id="outputText" rows="10" readonly placeholder="格式化结果将显示在此…"></textarea>
+<div id="status">就绪</div>
+</div>
+<script>
+// Core formatting logic
+const __EM = "—";
+const __EN = "–";
+const __RI = "Ⅰ";
+const __RX = "ⅿ";
+
+const CN_NUM={零:0,一:1,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9,十:10};
+const A2C={1:"一",2:"二",3:"三",4:"四",5:"五",6:"六",7:"七",8:"八",9:"九"};
+function c2a(s){s=s.trim();if(s in CN_NUM)return CN_NUM[s];if(s.includes("十")){const p=s.split("十");return(CN_NUM[p[0]]||1)*10+(p.length>1&&p[1]?CN_NUM[p[1]]||0:0)}return 0}
+function a2c(n){if(n in A2C)return A2C[n];if(n>=11&&n<=19){let r="十";if(n%10)r+=A2C[n%10]||"";return r}return String(n)}
+
+const RM={I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7,VIII:8,IX:9,X:10,XI:11,XII:12,XIII:13,XIV:14,XV:15};
+const FWR={"Ⅰ":"I","Ⅱ":"II","Ⅲ":"III","Ⅳ":"IV","Ⅴ":"V","Ⅵ":"VI","Ⅶ":"VII","Ⅷ":"VIII","Ⅸ":"IX","Ⅹ":"X"};
+function nr(r){return[...r.trim().toUpperCase()].map(c=>FWR[c]||c).join("")}
+
+const CC={bwv:"BWV",hwv:"HWV",rct:"RCT",rv:"RV",op:"Op.",m:"M.",k:"K.",d:"D.",s:"S.",f:"F.",l:"L.",wq:"Wq"};
+function nc(s){let r=s;for(const[k,v]of Object.entries(CC)){const re=new RegExp("\\b"+k+"\\.?\\b","gi");r=r.replace(re,m=>m.endsWith(". ")?v:v.replace(/\.$/,""))}return r}
+
+const LOW=["a","an","the","and","but","or","for","nor","on","at","to","from","by","in","of","with","de","du","des","da","di","del","le","la","les","el"];
+
+function cw(s){if(!s)return s;const ws=s.split(/\s+/);const f=ws[0];if(f.toUpperCase()!==f||f.length<=2)ws[0]=f.length>1?f[0].toUpperCase()+f.slice(1).toLowerCase():f.toUpperCase();return ws.join(" ")}
+function ct(s){if(!s)return s;const ws=s.split(/\s+/);if(!ws.length)return s;const rs=[];for(let i=0;i<ws.length;i++){let w=ws[i];const cl=w.replace(/^["']+/,"");if(!cl){rs.push(w);continue}if(cl===cl.toUpperCase()&&cl.length>1&&/^[a-zA-Z]+$/.test(cl)){rs.push(w);continue}const p=w.slice(0,w.length-cl.length);if(i===0||i===ws.length-1||!LOW.includes(cl.toLowerCase()))rs.push(p+cl[0].toUpperCase()+cl.slice(1).toLowerCase());else rs.push(p+cl.toLowerCase())}return rs.join(" ")}
+
+const CR=/(BWV\s*\d+|Op\.?\s*\d+|M\.?\s*\d+|K\.?\s*\d+|HWV\s*\d+|D\.?\s*\d+|S\.?\s*\d+|Wq\.?\s*\d+|F\.?\s*\d+|L\.?\s*\d+|RV\s*\d+|RCT\s*\d+)/i;
+
+const MR=/\b(Sonata|Concerto|Symphony|Quartet|Quintet|Trio|Duet|Duo|Fantasie|Fantasia|Overture|Rondo|Prelude|Fugue)\b/i;
+const PR=/\b(Suite|Etudes|Études|Preludes|Nocturnes|Waltzes|Impromptus|Ballades|Scherzos|Mazurkas|Polonaises|Fantastic\s*Dances)\b/i;
+
+const KR=/\b([A-Ga-g])([-\s]?(?:[Ff]lat|[Ss]harp|[Bb]|#))?\s+([Mm]inor|[Mm]ajor)\b/g;
+function nk(t){return t.replace(KR,(m,n,a,q)=>{n=n.toUpperCase();let s="";if(a){a=a.trim().replace(/^-/,"");if(/flat|b/i.test(a))s="-Flat";else if(/sharp|#/i.test(a))s="-Sharp";else s="-"+a[0].toUpperCase()+a.slice(1).toLowerCase()}return n+s+" "+(q.toLowerCase()==="minor"?"Minor":"Major")})}
+
+function sc(tp){for(const s of[":","："]){const i=tp.indexOf(s);if(i>=0){const a=tp.slice(i+1).trim();if(a&&/^[A-Za-z\u4e00-\u9fff]/.test(a))return a}}return tp}
+function ic(ts){const c=ts.map(t=>t.tl).join(" ");if(MR.test(c))return false;if(PR.test(c))return true;return true}
+
+// ZH parser
+const ZR=/第([一二三四五六七八九十百]+)(首|乐章)[\.。\s]*(.*)/;
+const ZD=/\s+(第[一二三四五六七八九十百]+[首乐章曲])/;
+function pz(l){l=l.trim();if(!l)return null;let wp=l,mp=null;if(l.includes("：")){const p=l.split("：",2),f=p[0].trim(),s=p[1].trim();if(ZR.test(s)){wp=f;mp=s}else{wp=s;const mm=wp.match(ZD);if(mm){mp=wp.slice(mm.index).trim();wp=wp.slice(0,mm.index).trim()}}}else{const mm=wp.match(ZD);if(mm){mp=wp.slice(mm.index).trim();wp=wp.slice(0,mm.index).trim()}}let wt=wp,cat="";const cm=wt.match(CR);if(cm){cat=nc(cm[1].trim());wt=wt.slice(0,cm.index).replace(/[ ,，]+$/,"")}if(mp){const mm=mp.match(ZR);if(mm)return{wt,cat,mt:mm[2],mn:c2a(mm[1]),mv:mm[3].trim()};return null}return{wt,cat,mt:null,mn:null,mv:null}}
+function fz(p,ec){const wd=(p.wt+" "+nc(ec||p.cat||"")).replace(/\s+$/,"");if(p.mn===null)return wd;let mv=p.mv||"";mv=mv.replace(/\(([^)]*)\)/g,(m,g)=>/^[\u4e00-\u9fff]+$/.test(g)?" – "+g:m);mv=mv.replace(/[━，]/g," – ");mv=mv.replace(/,/g," – ");return wd+"："+(p.mt==="首"?"No. "+p.mn+"・":"第"+a2c(p.mn)+"乐章・")+mv}
+function fzt(ls){return ls.map(l=>{const p=pz(l);return p?fz(p):l})}
+
+// EN parser
+function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}
+// Build regex patterns using actual unicode characters
+function mkSR(){return new RegExp("^(.*?)\\s+[\\-"+escRe(__EN)+escRe(__EM)+"]\\s+([ivxlcdmIVXLCDM"+__RI+"-"+__RX+"]+)\\.\\s+(.*)$")}
+function mkDR(){return new RegExp("^(.*?)\\s+([ivxlcdmIVXLCDM"+__RI+"-"+__RX+"]+)\\.\\s+(.*)$")}
+function mkCR(){return new RegExp("^(.*?),\\s*([A-Z]+\\.?\\s*\\d+)\\s*,\\s*(No\\.\\s*\\d+|V\\.?\\s*[ivxlcdmIVXLCDM"+__RI+"-"+__RX+"]+)[,\\.]?\\s+(.*)$","i")}
+
+let _EN_SR=null,_EN_DR=null,_EN_CR=null;
+function getSR(){return _EN_SR||(_EN_SR=mkSR())}
+function getDR(){return _EN_DR||(_EN_DR=mkDR())}
+function getCR(){return _EN_CR||(_EN_CR=mkCR())}
+
+function pe(l){l=l.trim();if(!l)return null
+let m=l.match(getSR())
+if(m){let tp=sc(m[1].trim());const rn=nr(m[2].trim());tp=/[a-zA-Z]/.test(tp)?ct(tp):tp;tp=nc(tp);let cat="";const cm=tp.match(CR);if(cm)cat=nc(cm[1].trim());const mv=cw(m[3].trim());return{tl:tp.replace(/\s+/g," "),rn,r2:RM[rn]||0,mv:mv.replace(/\s+/g," ").trim(),cat,fmt:"std"}}
+let m2=l.match(getDR())
+if(m2){let tp=sc(m2[1].trim());const rn=nr(m2[2].trim());tp=/[a-zA-Z]/.test(tp)?ct(tp):tp;tp=nc(tp);let cat="";const cm=tp.match(CR);if(cm)cat=nc(cm[1].trim());const mv=cw(m2[3].trim());return{tl:tp.replace(/\s+/g," "),rn,r2:RM[rn]||0,mv:mv.replace(/\s+/g," ").trim(),cat,fmt:"std_dir"}}
+const stripped=sc(l);let m3=stripped.match(getCR())
+if(m3){let tp=m3[1].trim();const mcat=nc(m3[2].trim());let num=m3[3].trim();const mn=m3[4].trim();const rn=nr(num.replace("No.","").replace(". ","").trim());const na=/^\d+$/.test(rn)?parseInt(rn):RM[rn]||0;const ir=/^[IVXLCDM]+$/.test(num.replace(". ","").trim());tp=/[a-zA-Z]/.test(tp)?ct(tp):tp;tp=nc(tp);return{tl:(tp+", "+nc(mcat)).replace(/\s+/g," "),rn,r2:na,mv:cw(mn.trim()),cat:mcat,fmt:ir?"coll_r":"coll"}}
+let tp=sc(l);let cat="";const cm=tp.match(CR);if(cm)cat=nc(cm[1].trim());tp=/[a-zA-Z]/.test(tp)?ct(tp):tp;tp=nc(tp);return{tl:tp.replace(/\s+/g," "),rn:"",r2:0,mv:"",cat,fmt:"single"}}
+
+function fe(p,isc){let t=nk(p.tl);if(p.fmt==="single")return t
+if(isc){if(p.fmt==="coll_r"||p.fmt==="std_dir")return t+": "+p.rn+". "+p.mv;let mv=p.mv;mv=mv.replace(/\s*[-–—]+\s+/,". ");mv=mv.replace(/\b([a-z]+)\.\s+(?=[A-Z])/g,"$1 — ");mv=mv.replace(/\b([a-z]+)\.\s+([a-z])/g,(m,a,b)=>a+" — "+b.toUpperCase());mv=mv.replace(/\.\s*([a-z])/g,(m,c)=>". "+c.toUpperCase());const ps=mv.includes(". ")?mv.split(". "):[mv];if(ps.length>1&&ps[1].trim())return t+": No. "+p.r2+", "+ps[0].trim()+". "+ps[1].trim();return t+": No. "+p.r2+", "+mv}
+let mv=p.mv;mv=mv.replace(/\b([a-z]+)\.\s+(?=[A-Z])/g,"$1 — ");mv=mv.replace(/\b([a-z]+)\.\s+([a-z])/g,(m,a,b)=>a+" — "+b.toUpperCase());mv=mv.replace(/\.\s*([a-z])/g,(m,c)=>". "+c.toUpperCase());return t+": "+p.rn+". "+mv}
+
+function fet(ls){const ap=ls.map(l=>pe(l)).filter(p=>p!==null);if(!ap.length)return[];const gr=[];let cur=[],ck=null;for(const p of ap){if(ck===null||p.tl===ck){ck=p.tl;cur.push(p)}else{gr.push(cur);ck=p.tl;cur=[p]}}if(cur.length)gr.push(cur);const fm={};for(const g of gr)fm[g[0].tl]=ic(g);return ap.map(p=>fe(p,fm[p.tl]||true))}
+
+function fp(ls){const out=[];for(let i=0;i<ls.length;i+=2){if(i+1>=ls.length){const zp=pz(ls[i]),ep=pe(ls[i]);if(ep&&zp&&!/[\u4e00-\u9fff]/.test(zp.wt||"")){out.push(...(ep.fmt!=="single"?fet([ls[i]]):[ls[i]]))}else if(zp)out.push(fz(zp));else if(ep)out.push(...fet([ls[i]]));else out.push(ls[i]);continue}
+const zp=pz(ls[i]),ep=pe(ls[i+1]);if(zp&&ep){out.push(fz(zp,ep.cat));out.push(fe(ep,ic([ep])))}else if(zp){out.push(fz(zp));out.push(ls[i+1])}else if(ep){out.push(ls[i]);out.push(fe(ep,ic([ep])))}else{out.push(ls[i]);out.push(ls[i+1])}}return out}
+
+// UI
+const ie=document.getElementById("inputText"),oe=document.getElementById("outputText");
+const icEl=document.getElementById("inCount"),ocEl=document.getElementById("outCount"),stEl=document.getElementById("status");
+ie.addEventListener("input",()=>{icEl.textContent="行数: "+ie.value.split("\n").filter(l=>l.trim()).length})
+function gm(){return document.querySelector('input[name="mode"]:checked').value}
+function process(){const lines=ie.value.split("\n").filter(l=>l.trim());if(!lines.length){stEl.textContent="请先输入曲目名称";return}
+try{const mode=gm();let r;if(mode==="paired"){if(lines.length%2)stEl.textContent="配对模式行数为奇数";r=fp(lines)}else if(mode==="zh")r=fzt(lines);else r=fet(lines);oe.value=r.join("\n");ocEl.textContent="行数: "+r.length;stEl.textContent="完成 - 输出 "+r.length+" 行"}catch(e){stEl.textContent="出错";console.error(e)}}
+function copyOut(){if(oe.value.trim())navigator.clipboard.writeText(oe.value).then(()=>stEl.textContent="已复制")}
+function clearAll(){ie.value="";oe.value="";icEl.textContent="行数: 0";ocEl.textContent="行数: 0";stEl.textContent="已清空"}
+</script>
+</body>
+</html>
