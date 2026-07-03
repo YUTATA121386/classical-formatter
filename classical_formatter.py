@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Apple Music Classical Track Formatter v4 — with capitalization normalization"""
 import sys, re, argparse, tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
@@ -90,32 +90,62 @@ ZD=re.compile(r'\s+(第[一二三四五六七八九十百]+[首乐章曲])')
 def pz(l):
     l=l.strip()
     if not l: return None
-    wp=l; mp=None
+    wp=l; mp=None; arr=''
+    # Normalize fullwidth/halfwidth punctuation differences
+    l=l.replace(':', '：').replace(',', '，')
     if '：' in l:
         p=l.split('：',1); f=p[0].strip(); s=p[1].strip()
         if ZR.match(s): wp,mp=f,s
         else:
-            wp=s; mm=ZD.search(wp)
-            if mm: mp=wp[mm.start():].strip(); wp=wp[:mm.start()].strip()
+            sclean=re.sub(r'[（(][^）)]*[）)]','',s).strip()
+            arr_m=re.search(r'[（(][^）)]*[）)]',s)
+            if arr_m: arr=arr_m.group(0)
+            mm=ZR.search(sclean)
+            if mm:
+                mtxt=mm.group(0)
+                pos=s.find(mtxt)
+                if pos>=0:
+                    pre=s[:pos].strip()
+                    if pre and pre[0] in "（(":
+                        wp=(f+' '+pre).strip() if f else pre
+                    else:
+                        wp=pre
+                    if arr_m and arr_m.start() >= pos:
+                        arr=''
+                    mp=s[pos:].strip()
+                else:
+                    wp=s[:mm.start()].strip()
+                    mp=sclean[mm.start():].strip()
+            else:
+                wp=s; mm=ZD.search(wp)
+                if mm: mp=wp[mm.start():].strip(); wp=wp[:mm.start()].strip()
+                else: mp=None
     else:
         mm=ZD.search(wp)
         if mm: mp=wp[mm.start():].strip(); wp=wp[:mm.start()].strip()
+        else: mp=None
     wt=wp; cat=''; cm=CATALOG_RE.search(wt)
     if cm: cat=norm_cat(cm.group(1).strip()); wt=wt[:cm.start()].rstrip(' ,，')
     if mp:
         mm=ZR.match(mp)
-        if mm: return {'wt':wt,'cat':cat,'mt':mm.group(2),'mn':c2a(mm.group(1)),'mv':mm.group(3).strip()}
+        if mm: return {'wt':wt,'cat':cat,'mt':mm.group(2),'mn':c2a(mm.group(1)),'mv':mm.group(3).strip(),'arr':arr}
         return None
-    return {'wt':wt,'cat':cat,'mt':None,'mn':None,'mv':None}
+    return {'wt':wt,'cat':cat,'mt':None,'mn':None,'mv':None,'arr':''}
+
 def fz(p, ec=None):
     wd=(p['wt']+' '+(norm_cat(ec or p['cat'] or ''))).rstrip()
+    if p.get('arr'): wd+=p['arr']
     if p['mn'] is None: return wd
     mv=p['mv'] or ''
     def cj(m): return ' – '+m.group(1) if re.match(r'^[\u4e00-\u9fff]+$',m.group(1)) else m.group(0)
+    mv=mv.lstrip('-–—').strip()
     mv=re.sub(r'\(([^)]*)\)',cj,mv)
-    mv=mv.replace('\u2500',' – ').replace('\uff0d',' – ').replace('，',' – ')
+    mv=mv.replace('─',' – ').replace('－',' – ').replace('，',' – ')
     mv=re.sub(r',(?:\s*)(?!\s*$)',' – ',mv)
+    # Convert remaining spaces between Chinese characters to en-dash
+    mv=re.sub(r'(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])',' – ',mv)
     return wd+'：'+('No. '+str(p['mn'])+'・'+mv if p['mt']=='首' else '第'+a2c(p['mn'])+'乐章・'+mv)
+
 def fzt(ls): return [l if pz(l) is None else fz(pz(l)) for l in ls]
 
 # ── EN ──
@@ -144,9 +174,13 @@ def ic(ts):
     if MP.search(c): return True
     return True
 
+
 def pe(l):
     l=l.strip()
     if not l: return None
+    l=l.replace('，',',').replace('：',':').replace('（','(').replace('）',')')
+    l=re.sub(r',([A-Z])',r', \1',l)
+    l=re.sub(r'\s*:\s+(?=[IVXLCDMivxlcdm\u2160-\u217F]+\.)',' - ',l)
     m=EN_SR.match(l)
     if m:
         tp,rn,mn=m.group(1).strip(),m.group(2).strip(),m.group(3).strip()
@@ -182,7 +216,6 @@ def pe(l):
     tp=cap_title(tp) if any(c.isalpha() for c in tp) else tp
     tp=norm_cat(tp)
     return {'tl':re.sub(r'\s+',' ',tp),'rn':'','r2':0,'mv':'','cat':cat,'fmt':'single'}
-
 def fe(p,isc):
     t=nk(p['tl'])
     if p['fmt']=='single': return t
@@ -294,3 +327,4 @@ class App:
 def gui_main(): root=tk.Tk(); App(root); root.mainloop()
 if __name__=='__main__':
     gui_main() if len(sys.argv)<=1 else cli_main()
+
