@@ -10,3 +10,16 @@ norm_test.txt
 fix_*.py
 gen_fix.py
 !outputs/
+
+# Temp test/debug files
+_fix_*.py
+_gen_*.py
+_fixed_*.js
+_test_*.js
+_web_*.js
+_*.json
+_check_*.py
+apple_style.html
+test_*.html
+test_*.txt
+test_*.py

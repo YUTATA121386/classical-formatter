@@ -134,18 +134,18 @@ def pz(l):
 
 def fz(p, ec=None):
     wd=(p['wt']+' '+(norm_cat(ec or p['cat'] or ''))).rstrip()
-    if p.get('arr'): wd+=p['arr']
-    if p['mn'] is None: return wd
+    if p['mn'] is None:
+        return wd + (p.get('arr') or '')
     mv=p['mv'] or ''
-    def cj(m): return ' – '+m.group(1) if re.match(r'^[\u4e00-\u9fff]+$',m.group(1)) else m.group(0)
-    mv=mv.lstrip('-–—').strip()
+    def cj(m): return ' - '+m.group(1) if re.match(r'^[\u4e00-\u9fff]+$',m.group(1)) else m.group(0)
+    mv=mv.lstrip('-\u2013\u2014').strip()
     mv=re.sub(r'\(([^)]*)\)',cj,mv)
-    mv=mv.replace('─',' – ').replace('－',' – ').replace('，',' – ')
-    mv=re.sub(r',(?:\s*)(?!\s*$)',' – ',mv)
-    # Convert remaining spaces between Chinese characters to en-dash
-    mv=re.sub(r'(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])',' – ',mv)
-    return wd+'：'+('No. '+str(p['mn'])+'・'+mv if p['mt']=='首' else '第'+a2c(p['mn'])+'乐章・'+mv)
-
+    mv=mv.replace('\u2500',' - ').replace('\uff0d',' - ').replace('，',' - ')
+    mv=re.sub(r',(?:\s*)(?!\s*$)',' - ',mv)
+    # Convert remaining spaces between Chinese characters to dash
+    mv=re.sub(r'(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])',' - ',mv)
+    suffix=(p.get('arr') or '')+('No. '+str(p['mn'])+'・' if p['mt']=='首' else '第'+a2c(p['mn'])+'乐章・')
+    return wd+'：'+suffix+mv
 def fzt(ls): return [l if pz(l) is None else fz(pz(l)) for l in ls]
 
 # ── EN ──
@@ -153,7 +153,7 @@ ES='^(.*?)\\s+[\\-'+chr(0x2013)+chr(0x2014)+']\\s+([ivxlcdmIVXLCDM'+chr(0x2160)+
 ED='^(.*?)\\s+([ivxlcdmIVXLCDM'+chr(0x2160)+'-'+chr(0x217F)+']+)\\.\\s+(.*)$'
 EC='^(.*?),\\s*([A-Z]+\\.?\\s*\\d+)\\s*,\\s*(No\\.\\s*\\d+|V\\.?\\s*[ivxlcdmIVXLCDM'+chr(0x2160)+'-'+chr(0x217F)+']+)[,\\.]?\\s+(.*)$'
 EN_SR=re.compile(ES); EN_DIRECT=re.compile(ED); EN_COLL=re.compile(EC,re.IGNORECASE)
-KP=re.compile(r'\b([A-Ga-g])([-\s]?(?:[Ff]lat|[Ss]harp|[Bb]|#))?\s+([Mm]inor|[Mm]ajor)\b')
+KP=re.compile(r'\b([a-g])([-\s]?(?:flat|sharp|b|#))?\s+(minor|major)\b', re.IGNORECASE)
 def nk(t):
     def rp(m):
         n=m.group(1).upper(); a=m.group(2) or ''; a=a.strip().lstrip('-').lstrip()
@@ -180,40 +180,47 @@ def pe(l):
     if not l: return None
     l=l.replace('，',',').replace('：',':').replace('（','(').replace('）',')')
     l=re.sub(r',([A-Z])',r', \1',l)
-    l=re.sub(r'\s*:\s+(?=[IVXLCDMivxlcdm\u2160-\u217F]+\.)',' - ',l)
-    m=EN_SR.match(l)
+    # Try direct : match first (preserves spacing)
+    m2=re.match(r'^(.*?)'+chr(0xFF1A)+r'\s+([IVXLCDMivxlcdm\u2160-\u217F]+)\.\s+(.*)$',l)
+    if not m2:
+        m2=re.match(r'^(.*?):\s+([IVXLCDMivxlcdm\u2160-\u217F]+)\.\s+(.*)$',l)
+    if m2:
+        tp,rn,mn=m2.group(1).strip(),m2.group(2).strip(),m2.group(3).strip()
+        rn=norm_roman(rn)
+        tp=sc(tp); tp=nk(tp); tp=norm_cat(tp)
+        cat=''; cm=CATALOG_RE.search(tp)
+        if cm: cat=norm_cat(cm.group(1).strip())
+        mv=cap_word(mn.strip())
+        return {'tl':re.sub(r'\s+',' ',tp),'rn':rn,'r2':ROMAN_MAP.get(rn,0),'mv':re.sub(r'\s+',' ',mv).strip(),'cat':cat,'fmt':'std_dir'}
+    # Fall back to dash-separated match
+    l2=re.sub(r'\s*:\s+(?=[IVXLCDMivxlcdm\u2160-\u217F]+\.)',' - ',l)
+    m=EN_SR.match(l2)
     if m:
         tp,rn,mn=m.group(1).strip(),m.group(2).strip(),m.group(3).strip()
-        tp=sc(tp); rn=norm_roman(rn)
-        tp=cap_title(tp) if any(c.isalpha() for c in tp) else tp
-        tp=norm_cat(tp)
+        tp=sc(tp); tp=nk(tp); tp=norm_cat(tp)
         cat=''; cm=CATALOG_RE.search(tp)
         if cm: cat=norm_cat(cm.group(1).strip())
         mv=cap_word(mn.strip())
         return {'tl':re.sub(r'\s+',' ',tp),'rn':rn,'r2':ROMAN_MAP.get(rn,0),'mv':re.sub(r'\s+',' ',mv).strip(),'cat':cat,'fmt':'std'}
-    m2=EN_DIRECT.match(l)
-    if m2:
-        tp,rn,mn=m2.group(1).strip(),m2.group(2).strip(),m2.group(3).strip()
-        tp=sc(tp); rn=norm_roman(rn)
-        tp=cap_title(tp) if any(c.isalpha() for c in tp) else tp
-        tp=norm_cat(tp)
+    m3=EN_DIRECT.match(l2)
+    if m3:
+        tp,rn,mn=m3.group(1).strip(),m3.group(2).strip(),m3.group(3).strip()
+        tp=sc(tp); tp=nk(tp); tp=norm_cat(tp)
         cat=''; cm=CATALOG_RE.search(tp)
         if cm: cat=norm_cat(cm.group(1).strip())
         mv=cap_word(mn.strip())
         return {'tl':re.sub(r'\s+',' ',tp),'rn':rn,'r2':ROMAN_MAP.get(rn,0),'mv':re.sub(r'\s+',' ',mv).strip(),'cat':cat,'fmt':'std_dir'}
     stripped=sc(l)
-    m3=EN_COLL.match(stripped)
-    if m3:
-        tp,mcat,num,mn=m3.group(1).strip(),m3.group(2).strip(),m3.group(3).strip(),m3.group(4).strip()
+    m4=EN_COLL.match(stripped)
+    if m4:
+        tp,mcat,num,mn=m4.group(1).strip(),m4.group(2).strip(),m4.group(3).strip(),m4.group(4).strip()
         rn=norm_roman(num.replace('No.','').replace('.','').strip())
         na=int(rn) if rn.isdigit() else ROMAN_MAP.get(rn,0)
         ir=bool(re.match(r'[ivxlcdmIVXLCDM]+$',num.replace('.','').strip()))
-        tp=cap_title(tp) if any(c.isalpha() for c in tp) else tp
-        tp=norm_cat(tp)
+        tp=sc(tp); tp=nk(tp); tp=norm_cat(tp)
         return {'tl':re.sub(r'\s+',' ',tp+', '+norm_cat(mcat)),'rn':rn,'r2':na,'mv':cap_word(mn.strip()),'cat':norm_cat(mcat),'fmt':'coll_r' if ir else 'coll'}
-    tp=sc(l); cat=''; cm=CATALOG_RE.search(tp)
+    tp=nk(sc(l)); cat=''; cm=CATALOG_RE.search(tp)
     if cm: cat=norm_cat(cm.group(1).strip())
-    tp=cap_title(tp) if any(c.isalpha() for c in tp) else tp
     tp=norm_cat(tp)
     return {'tl':re.sub(r'\s+',' ',tp),'rn':'','r2':0,'mv':'','cat':cat,'fmt':'single'}
 def fe(p,isc):
@@ -327,4 +334,5 @@ class App:
 def gui_main(): root=tk.Tk(); App(root); root.mainloop()
 if __name__=='__main__':
     gui_main() if len(sys.argv)<=1 else cli_main()
+
 
